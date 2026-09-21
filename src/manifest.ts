@@ -9,24 +9,24 @@ const TOOL_DEFINITIONS: PluginToolDeclaration[] = [
   // 1-2: Community Identity & Membership
   {
     name: "vk_group_get_details",
-    displayName: "VK Group Get Details",
+    displayName: "VK: сведения о сообществе",
     description:
-      "Reads VK community details: name, description, status, photo, cover, member count, and features.",
+      "Получает сведения о сообществе VK: название, описание, статус, фотографии, обложку, количество участников и доступные возможности.",
     parametersSchema: {
       type: "object",
       properties: {
         fields: {
           type: "array",
           items: { type: "string" },
-          description: "Optional extra fields to request (e.g. description, members_count, status, site).",
+          description: "Необязательные дополнительные поля, например description, members_count, status, site.",
         },
       },
     },
   },
   {
     name: "vk_group_is_member",
-    displayName: "VK Group Is Member",
-    description: "Checks whether a specified VK user is a member of the community.",
+    displayName: "VK: проверка участника сообщества",
+    description: "Проверяет, состоит ли указанный пользователь VK в сообществе.",
     parametersSchema: {
       type: "object",
       required: ["userId"],
@@ -42,8 +42,8 @@ const TOOL_DEFINITIONS: PluginToolDeclaration[] = [
   // 3-8: Wall Publishing & Lifecycle
   {
     name: "vk_wall_post",
-    displayName: "VK Wall Post",
-    description: "Publishes a post to the community wall from the community name.",
+    displayName: "VK: публикация записи на стене",
+    description: "Публикует запись на стене от имени сообщества.",
     parametersSchema: {
       type: "object",
       properties: {
@@ -70,8 +70,8 @@ const TOOL_DEFINITIONS: PluginToolDeclaration[] = [
   },
   {
     name: "vk_wall_edit",
-    displayName: "VK Wall Edit",
-    description: "Modifies an existing published or postponed wall post.",
+    displayName: "VK: изменение записи на стене",
+    description: "Изменяет опубликованную или отложенную запись на стене сообщества.",
     parametersSchema: {
       type: "object",
       required: ["postId"],
@@ -92,8 +92,8 @@ const TOOL_DEFINITIONS: PluginToolDeclaration[] = [
   },
   {
     name: "vk_wall_delete",
-    displayName: "VK Wall Delete",
-    description: "Deletes a post from the community wall.",
+    displayName: "VK: удаление записи со стены",
+    description: "Удаляет запись со стены сообщества.",
     parametersSchema: {
       type: "object",
       required: ["postId"],
@@ -104,8 +104,8 @@ const TOOL_DEFINITIONS: PluginToolDeclaration[] = [
   },
   {
     name: "vk_wall_get",
-    displayName: "VK Wall Get",
-    description: "Retrieves a paginated list of posts from the community wall.",
+    displayName: "VK: получение записей со стены",
+    description: "Получает список записей со стены сообщества с постраничной навигацией.",
     parametersSchema: {
       type: "object",
       properties: {
@@ -121,8 +121,8 @@ const TOOL_DEFINITIONS: PluginToolDeclaration[] = [
   },
   {
     name: "vk_wall_pin",
-    displayName: "VK Wall Pin",
-    description: "Pins a post to the top of the community wall.",
+    displayName: "VK: закрепление записи",
+    description: "Закрепляет запись вверху стены сообщества.",
     parametersSchema: {
       type: "object",
       required: ["postId"],
@@ -133,8 +133,8 @@ const TOOL_DEFINITIONS: PluginToolDeclaration[] = [
   },
   {
     name: "vk_wall_unpin",
-    displayName: "VK Wall Unpin",
-    description: "Unpins a post from the top of the community wall.",
+    displayName: "VK: открепление записи",
+    description: "Открепляет запись от верхней части стены сообщества.",
     parametersSchema: {
       type: "object",
       required: ["postId"],
@@ -147,9 +147,9 @@ const TOOL_DEFINITIONS: PluginToolDeclaration[] = [
   // 9-12: Media Uploads
   {
     name: "vk_media_upload_photo",
-    displayName: "VK Media Upload Photo",
+    displayName: "VK: загрузка фотографии",
     description:
-      "Uploads an image from a public URL to the community wall using the 3-step VK photo protocol.",
+      "Загружает изображение по публичной ссылке для прикрепления к записи сообщества по трёхэтапному протоколу VK.",
     parametersSchema: {
       type: "object",
       required: ["url"],
@@ -164,8 +164,8 @@ const TOOL_DEFINITIONS: PluginToolDeclaration[] = [
   },
   {
     name: "vk_media_upload_document",
-    displayName: "VK Media Upload Document",
-    description: "Uploads a document file from a public HTTPS URL to the community wall.",
+    displayName: "VK: загрузка документа",
+    description: "Загружает документ по публичной HTTPS-ссылке для прикрепления к записи сообщества.",
     parametersSchema: {
       type: "object",
       required: ["url", "title"],
@@ -181,9 +181,9 @@ const TOOL_DEFINITIONS: PluginToolDeclaration[] = [
   },
   {
     name: "vk_media_upload_video",
-    displayName: "VK Media Upload Video",
+    displayName: "VK: подготовка загрузки видео",
     description:
-      "Initiates a video upload to the community (video.save) and returns upload URL and attachment descriptor.",
+      "Подготавливает загрузку видео в сообщество через video.save и возвращает адрес загрузки и идентификатор вложения.",
     parametersSchema: {
       type: "object",
       required: ["name"],
@@ -197,8 +197,8 @@ const TOOL_DEFINITIONS: PluginToolDeclaration[] = [
   },
   {
     name: "vk_media_create_poll",
-    displayName: "VK Media Create Poll",
-    description: "Creates a poll for attachment to community wall posts.",
+    displayName: "VK: создание опроса",
+    description: "Создаёт опрос для прикрепления к записи на стене сообщества.",
     parametersSchema: {
       type: "object",
       required: ["question", "answers"],
@@ -221,8 +221,8 @@ const TOOL_DEFINITIONS: PluginToolDeclaration[] = [
   // 13-17: Comments & Moderation
   {
     name: "vk_comments_get",
-    displayName: "VK Comments Get",
-    description: "Retrieves comments for a specific community post.",
+    displayName: "VK: получение комментариев",
+    description: "Получает комментарии к указанной записи сообщества.",
     parametersSchema: {
       type: "object",
       required: ["postId"],
@@ -236,8 +236,8 @@ const TOOL_DEFINITIONS: PluginToolDeclaration[] = [
   },
   {
     name: "vk_comments_create",
-    displayName: "VK Comments Create",
-    description: "Creates a comment on a wall post on behalf of the community.",
+    displayName: "VK: создание комментария",
+    description: "Создаёт комментарий к записи от имени сообщества.",
     parametersSchema: {
       type: "object",
       required: ["postId", "message"],
@@ -258,8 +258,8 @@ const TOOL_DEFINITIONS: PluginToolDeclaration[] = [
   },
   {
     name: "vk_comments_delete",
-    displayName: "VK Comments Delete",
-    description: "Deletes a comment from the community wall.",
+    displayName: "VK: удаление комментария",
+    description: "Удаляет комментарий со стены сообщества.",
     parametersSchema: {
       type: "object",
       required: ["commentId"],
@@ -270,36 +270,36 @@ const TOOL_DEFINITIONS: PluginToolDeclaration[] = [
   },
   {
     name: "vk_members_ban",
-    displayName: "VK Members Ban",
-    description: "Bans a user from the VK community (adds to blacklist).",
+    displayName: "VK: блокировка пользователя",
+    description: "Блокирует пользователя в сообществе VK и добавляет его в чёрный список.",
     parametersSchema: {
       type: "object",
       required: ["userId"],
       properties: {
-        userId: { type: "integer", description: "User ID to ban." },
+        userId: { type: "integer", description: "Идентификатор пользователя для блокировки." },
         endDate: {
           type: "integer",
-          description: "Unix timestamp when ban ends (0 for permanent).",
+          description: "Время окончания блокировки (0 для бессрочной).",
           default: 0,
         },
         reason: {
           type: "integer",
-          description: "0-other, 1-spam, 2-verbal abuse, 3-strong language, 4-irrelevant messages.",
+          description: "0-другое, 1-спам, 2-оскорбления, 3-ненормативная лексика, 4-сообщения не по теме.",
           default: 0,
         },
-        comment: { type: "string", description: "Internal moderator note." },
+        comment: { type: "string", description: "Внутренний комментарий модератора." },
       },
     },
   },
   {
     name: "vk_members_unban",
-    displayName: "VK Members Unban",
-    description: "Removes a user from the VK community blacklist.",
+    displayName: "VK: разблокировка пользователя",
+    description: "Удаляет пользователя из чёрного списка сообщества VK.",
     parametersSchema: {
       type: "object",
       required: ["userId"],
       properties: {
-        userId: { type: "integer", description: "User ID to unban." },
+        userId: { type: "integer", description: "Идентификатор пользователя для разблокировки." },
       },
     },
   },
@@ -307,8 +307,8 @@ const TOOL_DEFINITIONS: PluginToolDeclaration[] = [
   // 18-21: Community Direct Messages
   {
     name: "vk_messages_get_conversations",
-    displayName: "VK Messages Get Conversations",
-    description: "Retrieves direct message conversations with the VK community inbox.",
+    displayName: "VK: список диалогов",
+    description: "Получает список диалогов в сообщениях сообщества VK.",
     parametersSchema: {
       type: "object",
       properties: {
@@ -324,13 +324,13 @@ const TOOL_DEFINITIONS: PluginToolDeclaration[] = [
   },
   {
     name: "vk_messages_get_history",
-    displayName: "VK Messages Get History",
-    description: "Retrieves message history with a specific peer/user.",
+    displayName: "VK: история сообщений",
+    description: "Получает историю сообщений с указанным пользователем или диалогом.",
     parametersSchema: {
       type: "object",
       required: ["peerId"],
       properties: {
-        peerId: { type: "integer", description: "User or chat peer ID." },
+        peerId: { type: "integer", description: "Идентификатор пользователя или беседы." },
         count: { type: "integer", minimum: 1, maximum: 100, default: 20 },
         offset: { type: "integer", minimum: 0, default: 0 },
       },
@@ -338,35 +338,35 @@ const TOOL_DEFINITIONS: PluginToolDeclaration[] = [
   },
   {
     name: "vk_messages_send",
-    displayName: "VK Messages Send",
-    description: "Sends a direct message to a user on behalf of the community.",
+    displayName: "VK: отправка сообщения",
+    description: "Отправляет личное сообщение пользователю от имени сообщества.",
     parametersSchema: {
       type: "object",
       required: ["peerId", "message"],
       properties: {
-        peerId: { type: "integer", description: "Target user ID." },
-        message: { type: "string", description: "Message text." },
+        peerId: { type: "integer", description: "Идентификатор получателя." },
+        message: { type: "string", description: "Текст сообщения." },
         randomId: {
           type: "integer",
-          description: "Unique integer for idempotency (auto-generated if omitted).",
+          description: "Уникальный целочисленный идентификатор для защиты от дублирования.",
         },
         attachments: {
           type: "array",
           items: { type: "string" },
-          description: "Optional attachment strings.",
+          description: "Список вложений VK.",
         },
       },
     },
   },
   {
     name: "vk_messages_mark_as_read",
-    displayName: "VK Messages Mark As Read",
-    description: "Marks incoming messages from a peer as read.",
+    displayName: "VK: отметка сообщений прочитанными",
+    description: "Отмечает входящие сообщения диалога прочитанными.",
     parametersSchema: {
       type: "object",
       required: ["peerId"],
       properties: {
-        peerId: { type: "integer", description: "Target user ID." },
+        peerId: { type: "integer", description: "Идентификатор пользователя или беседы." },
       },
     },
   },
@@ -374,33 +374,33 @@ const TOOL_DEFINITIONS: PluginToolDeclaration[] = [
   // 22-23: Analytics & Performance
   {
     name: "vk_stats_get_summary",
-    displayName: "VK Stats Get Summary",
-    description: "Retrieves community engagement and visitor statistics.",
+    displayName: "VK: сводная статистика сообщества",
+    description: "Получает статистику посещаемости и вовлечённости сообщества.",
     parametersSchema: {
       type: "object",
       properties: {
         timestampFrom: {
           type: "integer",
-          description: "Start timestamp for stats window.",
+          description: "Начало временного диапазона статистики.",
         },
         timestampTo: {
           type: "integer",
-          description: "End timestamp for stats window.",
+          description: "Окончание временного диапазона статистики.",
         },
         intervalsCount: {
           type: "integer",
           minimum: 1,
           maximum: 30,
           default: 7,
-          description: "Number of daily intervals.",
+          description: "Количество дневных интервалов.",
         },
       },
     },
   },
   {
     name: "vk_stats_get_post_reach",
-    displayName: "VK Stats Get Post Reach",
-    description: "Retrieves detailed reach and engagement statistics for wall posts.",
+    displayName: "VK: охват записей",
+    description: "Получает подробную статистику охвата и вовлечённости для записей на стене.",
     parametersSchema: {
       type: "object",
       required: ["postIds"],
@@ -410,7 +410,7 @@ const TOOL_DEFINITIONS: PluginToolDeclaration[] = [
           items: { type: "integer" },
           minItems: 1,
           maxItems: 300,
-          description: "Array of post IDs to inspect reach for.",
+          description: "Массив идентификаторов записей для анализа охвата.",
         },
       },
     },
@@ -421,9 +421,9 @@ export const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
   apiVersion: 1,
   version: PLUGIN_VERSION,
-  displayName: "VK Community Tools",
+  displayName: "Инструменты сообщества VK",
   description:
-    "Complete VK group integration: wall publishing, media, messages, comments, analytics, connector page, and dashboard widget.",
+    "Полная интеграция с сообществом VK: публикации на стене, медиафайлы, личные сообщения, комментарии, аналитика, панель управления и виджет.",
   author: "Openser",
   categories: ["connector", "ui", "automation"],
   capabilities: [

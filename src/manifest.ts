@@ -432,11 +432,31 @@ export const manifest: PaperclipPluginManifestV1 = {
     "secrets.read-ref",
     "instance.settings.register",
     "ui.dashboardWidget.register",
+    "webhooks.receive",
+    "database.namespace.migrate",
+    "database.namespace.read",
+    "database.namespace.write",
+    "plugin.state.read",
+    "plugin.state.write",
+    "companies.read",
+    "agents.read",
+    "agents.invoke",
   ],
   entrypoints: {
     worker: "./dist/worker.js",
     ui: "./dist/ui",
   },
+  database: {
+    namespaceSlug: "vk_community_tools",
+    migrationsDir: "migrations",
+  },
+  webhooks: [
+    {
+      endpointKey: "vk-callback",
+      displayName: "VK Callback API",
+      description: "Receives VK events forwarded by a compatible callback gateway.",
+    },
+  ],
   instanceConfigSchema: {
     type: "object",
     additionalProperties: false,
@@ -501,6 +521,76 @@ export const manifest: PaperclipPluginManifestV1 = {
         maximum: 20,
         default: 3,
         title: "Max Requests Per Second",
+      },
+      eventTransport: {
+        type: "string",
+        enum: ["callback", "long_poll", "disabled"],
+        default: "disabled",
+        title: "Event Transport",
+        description: "Mechanism used to ingest real-time VK community events.",
+      },
+      callbackConfirmationCode: {
+        type: "string",
+        title: "Callback Confirmation Code",
+        description: "Required response string when configuring Callback API server in VK.",
+      },
+      callbackSecretRef: {
+        title: "Callback Secret Key (Secret Reference)",
+        format: "secret-ref",
+        oneOf: [
+          { type: "string", minLength: 1 },
+          {
+            type: "object",
+            required: ["type", "secretId"],
+            properties: {
+              type: { type: "string", const: "secret_ref" },
+              secretId: { type: "string", minLength: 1 },
+              version: {
+                oneOf: [
+                  { type: "string", const: "latest" },
+                  { type: "integer", minimum: 1 },
+                ],
+              },
+            },
+          },
+        ],
+      },
+      assignedAgents: {
+        type: "object",
+        title: "Assigned Agents",
+        description: "Agent routing configuration for support, moderation, and finance.",
+        properties: {
+          supportAgentId: {
+            type: ["string", "null"],
+            description: "Agent ID responsible for direct messages and support inquiries.",
+          },
+          moderationAgentId: {
+            type: ["string", "null"],
+            description: "Agent ID responsible for wall and market comments moderation.",
+          },
+          financeAgentId: {
+            type: ["string", "null"],
+            description: "Agent ID responsible for Donut and VK Market payment notifications.",
+          },
+        },
+      },
+      automationSettings: {
+        type: "object",
+        title: "Automation Settings",
+        properties: {
+          emergencyKillSwitch: {
+            type: "boolean",
+            default: false,
+            description: "When true, halts all automated outbound messages and actions.",
+          },
+          maxRepliesPerHourPerUser: {
+            type: "integer",
+            minimum: 1,
+            maximum: 100,
+            default: 10,
+            description: "Anti-loop rate limit per user per hour.",
+          },
+        },
       },
     },
   },
@@ -574,6 +664,45 @@ export function validateVkPluginConfig(raw: unknown): {
   validateSecretRef("userTokenRef", data.userTokenRef);
   validateSecretRef("groupTokenRef", data.groupTokenRef);
 
+  const eventTransport = data.eventTransport ?? "disabled";
+  if (
+    eventTransport !== "callback" &&
+    eventTransport !== "long_poll" &&
+    eventTransport !== "disabled"
+  ) {
+    errors.push("eventTransport must be callback, long_poll, or disabled");
+  }
+
+  if (data.callbackSecretRef !== undefined) {
+    validateSecretRef("callbackSecretRef", data.callbackSecretRef);
+  }
+
+  const assignedAgents =
+    data.assignedAgents && typeof data.assignedAgents === "object"
+      ? (data.assignedAgents as Record<string, unknown>)
+      : {};
+  for (const field of ["supportAgentId", "moderationAgentId", "financeAgentId"] as const) {
+    const value = assignedAgents[field];
+    if (value !== undefined && value !== null && (typeof value !== "string" || !value.trim())) {
+      errors.push(`assignedAgents.${field} must be a non-empty string or null`);
+    }
+  }
+
+  const automationSettings =
+    data.automationSettings && typeof data.automationSettings === "object"
+      ? (data.automationSettings as Record<string, unknown>)
+      : {};
+  const maxReplies = automationSettings.maxRepliesPerHourPerUser ?? 10;
+  if (!Number.isInteger(maxReplies) || Number(maxReplies) < 1 || Number(maxReplies) > 100) {
+    errors.push("automationSettings.maxRepliesPerHourPerUser must be an integer from 1 to 100");
+  }
+  if (
+    automationSettings.emergencyKillSwitch !== undefined &&
+    typeof automationSettings.emergencyKillSwitch !== "boolean"
+  ) {
+    errors.push("automationSettings.emergencyKillSwitch must be a boolean");
+  }
+
   if (errors.length > 0) {
     return { valid: false, errors };
   }
@@ -589,6 +718,21 @@ export function validateVkPluginConfig(raw: unknown): {
         typeof data.rateLimitRps === "number" && data.rateLimitRps > 0
           ? data.rateLimitRps
           : 3,
+      eventTransport: eventTransport as "callback" | "long_poll" | "disabled",
+      callbackConfirmationCode:
+        typeof data.callbackConfirmationCode === "string"
+          ? data.callbackConfirmationCode
+          : undefined,
+      callbackSecretRef: data.callbackSecretRef as any,
+      assignedAgents: {
+        supportAgentId: (assignedAgents.supportAgentId as string | null | undefined) ?? null,
+        moderationAgentId: (assignedAgents.moderationAgentId as string | null | undefined) ?? null,
+        financeAgentId: (assignedAgents.financeAgentId as string | null | undefined) ?? null,
+      },
+      automationSettings: {
+        emergencyKillSwitch: automationSettings.emergencyKillSwitch === true,
+        maxRepliesPerHourPerUser: Number(maxReplies),
+      },
     },
   };
 }

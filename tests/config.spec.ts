@@ -151,5 +151,54 @@ describe("manifest & configuration validator", () => {
         }).valid,
       ).toBe(false);
     });
+
+    it("validates event transport, agent assignments and automation settings", () => {
+      const validEventsConfig = {
+        groupId: 238558829,
+        userTokenRef: "sec-u",
+        groupTokenRef: "sec-g",
+        eventTransport: "long_poll",
+        callbackConfirmationCode: "test_conf_123",
+        callbackSecretRef: "sec-callback-secret",
+        assignedAgents: {
+          supportAgentId: "00000000-0000-0000-0000-000000000001",
+          moderationAgentId: null,
+          financeAgentId: "00000000-0000-0000-0000-000000000003",
+        },
+        automationSettings: {
+          emergencyKillSwitch: false,
+          maxRepliesPerHourPerUser: 10,
+        },
+      };
+      const res = validateVkPluginConfig(validEventsConfig);
+      expect(res.valid).toBe(true);
+      expect(res.config?.eventTransport).toBe("long_poll");
+      expect(res.config?.assignedAgents?.supportAgentId).toBe(
+        "00000000-0000-0000-0000-000000000001",
+      );
+      expect(res.config?.automationSettings?.maxRepliesPerHourPerUser).toBe(10);
+    });
+
+    it("rejects invalid eventTransport or negative rate limits", () => {
+      expect(
+        validateVkPluginConfig({
+          groupId: 100,
+          userTokenRef: "sec-u",
+          groupTokenRef: "sec-g",
+          eventTransport: "unsupported_mode",
+        }).valid,
+      ).toBe(false);
+
+      expect(
+        validateVkPluginConfig({
+          groupId: 100,
+          userTokenRef: "sec-u",
+          groupTokenRef: "sec-g",
+          automationSettings: {
+            maxRepliesPerHourPerUser: -5,
+          },
+        }).valid,
+      ).toBe(false);
+    });
   });
 });

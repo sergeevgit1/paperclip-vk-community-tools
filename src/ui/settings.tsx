@@ -5,8 +5,13 @@ import {
   usePluginData,
   usePluginToast,
 } from "@paperclipai/plugin-sdk/ui";
+import {
+  buildVkCallbackUrl,
+  describeCallbackStatus,
+  type CallbackGatewayStatus,
+} from "./callback.js";
 
-const PLUGIN_ID = "zaruba.vk-community-tools";
+const CALLBACK_GATEWAY_URL = "https://vk.openser.ru";
 
 interface ConnectionStatus {
   connected: boolean;
@@ -81,6 +86,11 @@ export function VkCompanySettingsPage() {
   const [emergencyKillSwitch, setEmergencyKillSwitch] = useState<boolean>(false);
   const [maxReplies, setMaxReplies] = useState<number>(10);
   const [callbackConfirmation, setCallbackConfirmation] = useState<string>("");
+  const [callbackSecret, setCallbackSecret] = useState<string>("");
+  const [callbackStatus, setCallbackStatus] = useState<CallbackGatewayStatus | null>(null);
+  const [callbackStatusLoading, setCallbackStatusLoading] = useState<boolean>(false);
+  const [callbackStatusError, setCallbackStatusError] = useState<string>("");
+  const [copiedCallbackUrl, setCopiedCallbackUrl] = useState<boolean>(false);
 
   const { data: statusData, loading: statusLoading, refresh: refreshStatus } =
     usePluginData<ConnectionStatus>(
@@ -120,6 +130,54 @@ export function VkCompanySettingsPage() {
     if (typeof auto.emergencyKillSwitch === "boolean") setEmergencyKillSwitch(auto.emergencyKillSwitch);
     if (typeof auto.maxRepliesPerHourPerUser === "number") setMaxReplies(auto.maxRepliesPerHourPerUser);
   }, [eventSettings]);
+
+  const refreshCallbackGatewayStatus = async () => {
+    const groupId = statusData?.groupId;
+    if (!groupId) return;
+
+    setCallbackStatusLoading(true);
+    setCallbackStatusError("");
+    try {
+      const response = await fetch(`${CALLBACK_GATEWAY_URL}/status/${groupId}`);
+      if (!response.ok) {
+        throw new Error(`Шлюз вернул статус ${response.status}`);
+      }
+      const data = (await response.json()) as CallbackGatewayStatus & { hasEvents?: boolean };
+      setCallbackStatus(data.hasEvents === false ? null : data);
+    } catch (error) {
+      setCallbackStatusError(error instanceof Error ? error.message : "Не удалось получить статус Callback API");
+    } finally {
+      setCallbackStatusLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (eventTransport !== "callback" || !statusData?.groupId) return;
+    void refreshCallbackGatewayStatus();
+    const interval = window.setInterval(() => void refreshCallbackGatewayStatus(), 5_000);
+    return () => window.clearInterval(interval);
+  }, [eventTransport, statusData?.groupId]);
+
+  const callbackUrl = buildVkCallbackUrl({
+    baseUrl: CALLBACK_GATEWAY_URL,
+    groupId: statusData?.groupId,
+    confirmationCode: callbackConfirmation,
+    secret: callbackSecret,
+  });
+
+  const callbackStatusDescription = describeCallbackStatus(callbackStatus);
+
+  const copyCallbackUrl = async () => {
+    if (!callbackUrl) return;
+    try {
+      await navigator.clipboard.writeText(callbackUrl);
+      setCopiedCallbackUrl(true);
+      window.setTimeout(() => setCopiedCallbackUrl(false), 1_500);
+      toast({ title: "Адрес Callback API скопирован", tone: "success" });
+    } catch {
+      toast({ title: "Не удалось скопировать адрес", tone: "error" });
+    }
+  };
 
   const onTest = async () => {
     setTesting(true);
@@ -331,18 +389,97 @@ export function VkCompanySettingsPage() {
         </div>
 
         {eventTransport === "callback" && (
-          <div className="mt-4 pt-4 border-t border-white/5 flex flex-col gap-2">
-            <label className="text-xs font-semibold text-white/70">Строка подтверждения (confirmation_code)</label>
-            <input
-              type="text"
-              value={callbackConfirmation}
-              onChange={(e) => setCallbackConfirmation(e.target.value)}
-              placeholder="Например: a1b2c3d4"
-              className="px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-xs text-white focus:outline-none focus:border-blue-500"
-            />
-            <p className="text-[11px] text-white/40">
-              Код из настроек Callback API сообщества ВКонтакте.
-            </p>
+          <div className="mt-4 pt-4 border-t border-white/5 space-y-5">
+            <div>
+              <h3 className="text-sm font-bold text-white">Подключение Callback API ВКонтакте</h3>
+              <p className="text-xs text-white/45 mt-1">
+                Заполните данные из настроек сообщества. Ниже появится готовый адрес сервера.
+              </p>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-3">
+              <label className="flex flex-col gap-2">
+                <span className="text-xs font-semibold text-white/70">Строка подтверждения</span>
+                <input
+                  type="text"
+                  value={callbackConfirmation}
+                  onChange={(e) => setCallbackConfirmation(e.target.value)}
+                  placeholder="Например: a1b2c3d4"
+                  className="px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-xs text-white focus:outline-none focus:border-blue-500"
+                />
+                <span className="text-[11px] text-white/35">Скопируйте её из раздела Callback API в настройках сообщества.</span>
+              </label>
+
+              <label className="flex flex-col gap-2">
+                <span className="text-xs font-semibold text-white/70">Секретный ключ Callback API</span>
+                <input
+                  type="password"
+                  value={callbackSecret}
+                  onChange={(e) => setCallbackSecret(e.target.value)}
+                  placeholder="Секрет из настроек Callback API"
+                  autoComplete="off"
+                  className="px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-xs text-white focus:outline-none focus:border-blue-500"
+                />
+                <span className="text-[11px] text-white/35">Этот ключ используется только для формирования адреса и не сохраняется в настройках Paperclip.</span>
+              </label>
+            </div>
+
+            <div className="rounded-2xl bg-white/[0.025] border border-white/10 p-4">
+              <div className="text-[11px] uppercase tracking-wide font-semibold text-white/40 mb-2">
+                Адрес сервера для ВКонтакте
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={callbackUrl}
+                  placeholder={statusData?.groupId ? "Введите строку подтверждения" : "Сначала проверьте подключение к сообществу"}
+                  className="flex-1 px-3 py-2 rounded-xl bg-black/20 border border-white/10 text-xs text-white/80 font-mono"
+                />
+                <button
+                  type="button"
+                  disabled={!callbackUrl}
+                  onClick={() => void copyCallbackUrl()}
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-xs font-semibold transition-colors"
+                >
+                  {copiedCallbackUrl ? "Скопировано" : "Скопировать адрес"}
+                </button>
+              </div>
+            </div>
+
+            <ol className="list-decimal pl-5 text-xs text-white/55 space-y-1.5 leading-relaxed">
+              <li>Откройте сообщество ВКонтакте: «Управление → Работа с API → Callback API».</li>
+              <li>Вставьте адрес сервера из поля выше.</li>
+              <li>Нажмите «Подтвердить» и дождитесь зелёного статуса ниже.</li>
+              <li>На вкладке «Типы событий» включите сообщения, комментарии и другие нужные события.</li>
+            </ol>
+
+            <div className={`rounded-2xl border p-4 ${
+              callbackStatusError || callbackStatusDescription.tone === "error"
+                ? "bg-red-500/10 border-red-500/30"
+                : callbackStatusDescription.tone === "success"
+                  ? "bg-emerald-500/10 border-emerald-500/30"
+                  : "bg-white/[0.02] border-white/10"
+            }`}>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-xs font-semibold text-white/90">
+                    {callbackStatusLoading ? "Проверяем Callback API..." : callbackStatusError ? "Шлюз Callback API недоступен" : callbackStatusDescription.title}
+                  </div>
+                  <div className="text-[11px] text-white/45 mt-1">
+                    {callbackStatusError || callbackStatusDescription.details}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void refreshCallbackGatewayStatus()}
+                  disabled={!statusData?.groupId || callbackStatusLoading}
+                  className="text-[11px] text-blue-400 hover:text-blue-300 disabled:opacity-40 whitespace-nowrap"
+                >
+                  Обновить статус
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </section>

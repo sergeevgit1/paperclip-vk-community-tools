@@ -97,7 +97,7 @@ describe("VkEventJournal", () => {
     sensitiveEvent.rawPayload = {
       type: "message_new",
       secret: "super-secret-callback-key",
-      access_token: "vk1.a.secret-token",
+      access_token: "test-key",
       object: { message: { text: "Hello" } },
     };
 

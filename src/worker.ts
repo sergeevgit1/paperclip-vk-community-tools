@@ -12,6 +12,7 @@ import { VkLongPollClient, type VkLongPollCursor } from "./events/long-poll.js";
 import { VkEventProcessor } from "./events/processor.js";
 import { EventRouter } from "./events/router.js";
 import type { RawVkEvent } from "./events/types.js";
+import { validateCallbackRequest } from "./events/validator.js";
 import manifest, { validateVkPluginConfig } from "./manifest.js";
 import { TOOL_HANDLERS } from "./tools/index.js";
 import type { VkPluginConfig } from "./types.js";
@@ -38,7 +39,38 @@ export async function resolveClient(
     );
   }
 
-  const config = validated.config;
+  let config = validated.config;
+
+  // Layer company-scoped state overrides for events if present
+  if (companyId) {
+    try {
+      const stateSettings = (await ctx.state.get({
+        scopeKind: "company",
+        scopeId: companyId,
+        namespace: "vk-events",
+        stateKey: "settings",
+      })) as Partial<VkPluginConfig> | null;
+
+      if (stateSettings && typeof stateSettings === "object") {
+        config = {
+          ...config,
+          eventTransport: stateSettings.eventTransport ?? config.eventTransport,
+          callbackConfirmationCode:
+            stateSettings.callbackConfirmationCode ?? config.callbackConfirmationCode,
+          assignedAgents: {
+            ...config.assignedAgents,
+            ...stateSettings.assignedAgents,
+          },
+          automationSettings: {
+            ...config.automationSettings,
+            ...stateSettings.automationSettings,
+          },
+        };
+      }
+    } catch {
+      // Fallback to base config
+    }
+  }
 
   let userToken: string | null = null;
   let groupToken: string | null = null;
@@ -358,7 +390,78 @@ export const plugin = definePlugin({
       }
     });
 
-    // 6. Action: test-connection (interactive refresh in settings)
+    // 6. Data bridge: company-scoped event settings
+    ctx.data.register("vk-event-settings", async (params: any) => {
+      const companyId = typeof params?.companyId === "string" ? params.companyId : undefined;
+      if (!companyId) return null;
+      const { config } = await resolveClient(ctx, companyId);
+      return {
+        eventTransport: config.eventTransport ?? "disabled",
+        callbackConfirmationCode: config.callbackConfirmationCode ?? "",
+        assignedAgents: config.assignedAgents ?? {},
+        automationSettings: config.automationSettings ?? {},
+      };
+    });
+
+    // 7. Action: save company-scoped event settings without touching secrets
+    ctx.actions.register("save-event-settings", async (params: any) => {
+      const companyId = typeof params?.companyId === "string" ? params.companyId : undefined;
+      if (!companyId) throw new Error("companyId is required");
+
+      const eventTransport =
+        params?.eventTransport === "callback" || params?.eventTransport === "long_poll"
+          ? params.eventTransport
+          : "disabled";
+      const assigned = params?.assignedAgents && typeof params.assignedAgents === "object"
+        ? params.assignedAgents as Record<string, unknown>
+        : {};
+      const automation = params?.automationSettings && typeof params.automationSettings === "object"
+        ? params.automationSettings as Record<string, unknown>
+        : {};
+      const maxReplies = Number(automation.maxRepliesPerHourPerUser ?? 10);
+      if (!Number.isInteger(maxReplies) || maxReplies < 1 || maxReplies > 100) {
+        throw new Error("maxRepliesPerHourPerUser must be an integer from 1 to 100");
+      }
+
+      const settings: Partial<VkPluginConfig> = {
+        eventTransport,
+        callbackConfirmationCode:
+          typeof params?.callbackConfirmationCode === "string"
+            ? params.callbackConfirmationCode.trim()
+            : "",
+        assignedAgents: {
+          supportAgentId: typeof assigned.supportAgentId === "string" && assigned.supportAgentId.trim()
+            ? assigned.supportAgentId.trim()
+            : null,
+          moderationAgentId: typeof assigned.moderationAgentId === "string" && assigned.moderationAgentId.trim()
+            ? assigned.moderationAgentId.trim()
+            : null,
+          financeAgentId: typeof assigned.financeAgentId === "string" && assigned.financeAgentId.trim()
+            ? assigned.financeAgentId.trim()
+            : null,
+        },
+        automationSettings: {
+          emergencyKillSwitch: automation.emergencyKillSwitch === true,
+          maxRepliesPerHourPerUser: maxReplies,
+        },
+      };
+
+      await ctx.state.set(
+        {
+          scopeKind: "company",
+          scopeId: companyId,
+          namespace: "vk-events",
+          stateKey: "settings",
+        },
+        settings,
+      );
+
+      const { config } = await resolveClient(ctx, companyId);
+      await startLongPollForCompany(ctx, companyId, config);
+      return { success: true };
+    });
+
+    // 8. Action: test-connection (interactive refresh in settings)
     ctx.actions.register("test-connection", async (params: any) => {
       const companyId = typeof params?.companyId === "string" ? params.companyId : undefined;
       const { client, config } = await resolveClient(ctx, companyId);
@@ -374,27 +477,7 @@ export const plugin = definePlugin({
       };
     });
 
-    // 7. Action: toggle-kill-switch
-    ctx.actions.register("toggle-kill-switch", async (params: any) => {
-      const companyId = typeof params?.companyId === "string" ? params.companyId : undefined;
-      const enabled = params?.enabled === true;
-      if (!companyId) {
-        throw new Error("companyId is required to toggle kill switch");
-      }
-      const existing = await ctx.config.get(companyId);
-      const auto = (existing.automationSettings as Record<string, unknown> | undefined) ?? {};
-      const updated = {
-        ...existing,
-        automationSettings: {
-          ...auto,
-          emergencyKillSwitch: enabled,
-        },
-      };
-      // Host provides ctx.state / config persistence via standard action
-      return { success: true, killSwitch: enabled };
-    });
-
-    // 8. Initialize Long Poll for active companies
+    // 7. Initialize Long Poll for active companies
     try {
       const companies = await ctx.companies.list({ limit: 100 });
       for (const comp of companies) {
@@ -414,10 +497,7 @@ export const plugin = definePlugin({
   },
 
   async onHealth(): Promise<{ status: "ok" | "error"; message?: string }> {
-    return {
-      status: "ok",
-      message: `VK Community Tools worker is active (active long-poll threads: ${activePollers.size})`,
-    };
+    return { status: "ok", message: "VK Community Tools worker is active" };
   },
 
   async onValidateConfig(rawConfig: Record<string, unknown>) {
@@ -481,6 +561,27 @@ export const plugin = definePlugin({
         const rawConfig = await ctx.config.get(comp.id);
         const validated = validateVkPluginConfig(rawConfig);
         if (validated.valid && validated.config && validated.config.groupId === groupId) {
+          let expectedSecret: string | undefined;
+          if (validated.config.callbackSecretRef) {
+            try {
+              expectedSecret = (await ctx.secrets.resolve(validated.config.callbackSecretRef as any)) ?? undefined;
+            } catch (secErr: any) {
+              ctx.logger.error(`[VK Callback] Failed to resolve callbackSecretRef: ${secErr.message}`);
+              return;
+            }
+          }
+
+          const validation = validateCallbackRequest(payload, {
+            expectedGroupId: groupId,
+            confirmationCode: validated.config.callbackConfirmationCode ?? "",
+            secret: expectedSecret,
+          });
+
+          if (!validation.valid) {
+            ctx.logger.warn(`[VK Callback] Rejected invalid payload: ${validation.error}`);
+            return;
+          }
+
           const processor = createProcessor(ctx, comp.id, validated.config);
           await processor.process(payload, "callback");
           return;

@@ -88,6 +88,12 @@ export function VkCompanySettingsPage() {
       companyId ? { companyId } : undefined,
     );
 
+  const { data: eventSettings, refresh: refreshSettings } =
+    usePluginData<any>(
+      "vk-event-settings",
+      companyId ? { companyId } : undefined,
+    );
+
   const { data: agentsData } = usePluginData<AgentItem[]>(
     "company-agents",
     companyId ? { companyId } : undefined,
@@ -99,37 +105,21 @@ export function VkCompanySettingsPage() {
   );
 
   const testConnection = usePluginAction("test-connection");
+  const saveEventSettings = usePluginAction("save-event-settings");
 
-  // Load existing instance config
+  // Sync loaded event settings into form state
   useEffect(() => {
-    let cancelled = false;
-    hostFetchJson<{ configJson?: Record<string, unknown> }>(`/api/plugins/${PLUGIN_ID}/config`)
-      .then((res) => {
-        if (cancelled || !res?.configJson) return;
-        const cfg = res.configJson;
-        if (cfg.eventTransport === "callback" || cfg.eventTransport === "long_poll") {
-          setEventTransport(cfg.eventTransport);
-        }
-        if (typeof cfg.callbackConfirmationCode === "string") {
-          setCallbackConfirmation(cfg.callbackConfirmationCode);
-        }
-        const assigned = (cfg.assignedAgents as Record<string, unknown>) ?? {};
-        if (typeof assigned.supportAgentId === "string") setSupportAgentId(assigned.supportAgentId);
-        if (typeof assigned.moderationAgentId === "string") setModerationAgentId(assigned.moderationAgentId);
-        if (typeof assigned.financeAgentId === "string") setFinanceAgentId(assigned.financeAgentId);
-
-        const auto = (cfg.automationSettings as Record<string, unknown>) ?? {};
-        if (typeof auto.emergencyKillSwitch === "boolean") setEmergencyKillSwitch(auto.emergencyKillSwitch);
-        if (typeof auto.maxRepliesPerHourPerUser === "number") setMaxReplies(auto.maxRepliesPerHourPerUser);
-      })
-      .catch(() => {
-        // Soft fail if cannot read config via direct API
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (!eventSettings) return;
+    if (eventSettings.eventTransport) setEventTransport(eventSettings.eventTransport);
+    if (eventSettings.callbackConfirmationCode) setCallbackConfirmation(eventSettings.callbackConfirmationCode);
+    const assigned = eventSettings.assignedAgents ?? {};
+    if (assigned.supportAgentId) setSupportAgentId(assigned.supportAgentId);
+    if (assigned.moderationAgentId) setModerationAgentId(assigned.moderationAgentId);
+    if (assigned.financeAgentId) setFinanceAgentId(assigned.financeAgentId);
+    const auto = eventSettings.automationSettings ?? {};
+    if (typeof auto.emergencyKillSwitch === "boolean") setEmergencyKillSwitch(auto.emergencyKillSwitch);
+    if (typeof auto.maxRepliesPerHourPerUser === "number") setMaxReplies(auto.maxRepliesPerHourPerUser);
+  }, [eventSettings]);
 
   const onTest = async () => {
     setTesting(true);
@@ -148,14 +138,8 @@ export function VkCompanySettingsPage() {
   const onSaveConfig = async () => {
     setSaving(true);
     try {
-      // Read current base config first to preserve tokens and groupId
-      const current = await hostFetchJson<{ configJson?: Record<string, unknown> }>(
-        `/api/plugins/${PLUGIN_ID}/config`,
-      );
-      const currentCfg = current?.configJson ?? {};
-
-      const nextConfig = {
-        ...currentCfg,
+      await saveEventSettings({
+        companyId,
         eventTransport,
         callbackConfirmationCode: callbackConfirmation.trim() || undefined,
         assignedAgents: {
@@ -167,13 +151,9 @@ export function VkCompanySettingsPage() {
           emergencyKillSwitch,
           maxRepliesPerHourPerUser: Number(maxReplies) || 10,
         },
-      };
-
-      await hostFetchJson(`/api/plugins/${PLUGIN_ID}/config`, {
-        method: "POST",
-        body: JSON.stringify({ configJson: nextConfig }),
       });
 
+      await refreshSettings();
       await refreshStatus();
       await refreshEvents();
       toast({ title: "Настройки успешно сохранены", tone: "success" });

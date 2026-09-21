@@ -65,7 +65,7 @@ describe("EventRouter and Zero-Agent Invariant", () => {
       "company-1",
       expect.objectContaining({
         reason: "vk:message_new:555",
-        prompt: expect.stringContaining("Как получить доступ?"),
+        prompt: expect.stringContaining("<untrusted_user_message>"),
       }),
     );
   });

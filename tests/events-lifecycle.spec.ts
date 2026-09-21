@@ -77,6 +77,79 @@ describe("VK Plugin Events Lifecycle", () => {
     expect(insertQuery?.params).toContain("evt-wb-1");
   });
 
+  it("rejects callback payload with wrong secret before journaling", async () => {
+    const harness = createTestHarness({
+      manifest,
+      config: {
+        groupId: 238558829,
+        userTokenRef: "sec-user-token",
+        groupTokenRef: "sec-group-token",
+        callbackSecretRef: "sec-callback-token",
+        eventTransport: "callback",
+      },
+    });
+    const companyId = "00000000-0000-0000-0000-000000000001";
+    harness.seed({
+      companies: [{ id: companyId, name: "Test", status: "active" } as any],
+    });
+    harness.ctx.secrets.resolve = async (ref: any) =>
+      String(ref).includes("callback") ? "correct-secret" : "vk1.a.token";
+
+    await plugin.definition.setup(harness.ctx);
+    await plugin.definition.onWebhook?.({
+      endpointKey: "vk-callback",
+      headers: {},
+      rawBody: JSON.stringify({
+        type: "message_new",
+        group_id: 238558829,
+        event_id: "forged-event",
+        secret: "wrong-secret",
+        object: { message: { id: 1, peer_id: 1, from_id: 1, text: "forged" } },
+      }),
+      requestId: "req-forged",
+    });
+
+    expect(harness.dbQueries.some((q) => q.sql.includes("vk_event_journal"))).toBe(false);
+  });
+
+  it("saves company-scoped event settings without rewriting token config", async () => {
+    const harness = createTestHarness({
+      manifest,
+      config: {
+        groupId: 238558829,
+        userTokenRef: "sec-user-token",
+        groupTokenRef: "sec-group-token",
+      },
+    });
+    const companyId = "00000000-0000-0000-0000-000000000001";
+    harness.ctx.secrets.resolve = async () => "vk1.a.token";
+
+    await plugin.definition.setup(harness.ctx);
+    const result = await harness.performAction(
+      "save-event-settings",
+      {
+        eventTransport: "disabled",
+        assignedAgents: { supportAgentId: "agent-support-1" },
+        automationSettings: { emergencyKillSwitch: true, maxRepliesPerHourPerUser: 7 },
+      },
+      { companyId },
+    );
+
+    expect(result).toEqual({ success: true });
+    expect(
+      harness.getState({
+        scopeKind: "company",
+        scopeId: companyId,
+        namespace: "vk-events",
+        stateKey: "settings",
+      }),
+    ).toMatchObject({
+      eventTransport: "disabled",
+      assignedAgents: { supportAgentId: "agent-support-1" },
+      automationSettings: { emergencyKillSwitch: true, maxRepliesPerHourPerUser: 7 },
+    });
+  });
+
   it("exposes vk-recent-events data bridge", async () => {
     const harness = createTestHarness({
       manifest,

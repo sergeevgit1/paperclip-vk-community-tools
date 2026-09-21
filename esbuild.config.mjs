@@ -1,24 +1,9 @@
-import { existsSync } from "node:fs";
-import { build } from "esbuild";
+import esbuild from "esbuild";
+import { createPluginBundlerPresets } from "@paperclipai/plugin-sdk/bundlers";
 
-const entries = ["worker", "manifest"];
+const presets = createPluginBundlerPresets();
+const workerCtx = await esbuild.context(presets.esbuild.worker);
+const manifestCtx = await esbuild.context(presets.esbuild.manifest);
 
-for (const entry of entries) {
-  const entryPoint = `src/${entry}.ts`;
-  if (!existsSync(entryPoint)) {
-    console.log(`Skipping ${entryPoint}: not created yet`);
-    continue;
-  }
-
-  await build({
-    entryPoints: [entryPoint],
-    outfile: `dist/${entry}.js`,
-    bundle: true,
-    format: "esm",
-    platform: "node",
-    target: "node22",
-    sourcemap: true,
-    external: ["@paperclipai/plugin-sdk"],
-    logLevel: "info",
-  });
-}
+await Promise.all([workerCtx.rebuild(), manifestCtx.rebuild()]);
+await Promise.all([workerCtx.dispose(), manifestCtx.dispose()]);

@@ -1,0 +1,41 @@
+{
+  "name": "@zaruba/paperclip-vk-community-tools",
+  "version": "0.1.0",
+  "private": false,
+  "license": "MIT",
+  "author": "Openser",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sergeevgit1/paperclip-vk-community-tools.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sergeevgit1/paperclip-vk-community-tools/issues"
+  },
+  "homepage": "https://github.com/sergeevgit1/paperclip-vk-community-tools#readme",
+  "type": "module",
+  "paperclipPlugin": {
+    "manifest": "./dist/manifest.js",
+    "worker": "./dist/worker.js",
+    "ui": "./dist/ui/"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "build:worker": "node ./esbuild.config.mjs",
+    "build:ui": "node ./scripts/build-ui.mjs",
+    "build": "node ./esbuild.config.mjs && node ./scripts/build-ui.mjs"
+  },
+  "dependencies": {
+    "@paperclipai/plugin-sdk": "2026.916.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.21",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "esbuild": "^0.28.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "typescript": "^5.7.3",
+    "vitest": "^4.1.8"
+  }
+}

@@ -11,13 +11,27 @@ export interface VkCommunitySummaryData {
   membersCount?: number;
   unansweredMessages?: number;
   latestPostTime?: number | null;
+  eventTransport?: "callback" | "long_poll" | "disabled";
   refreshedAt?: string;
+}
+
+interface JournalEventRow {
+  id: string;
+  event_type: string;
+  category: string;
+  status: string;
+  created_at: string;
 }
 
 export function VkDashboardWidget({ companyId }: { companyId?: string }) {
   const { data, loading, error } = usePluginData<VkCommunitySummaryData>(
     "vk-community-summary",
     companyId ? { companyId } : {},
+  );
+
+  const { data: recentEvents } = usePluginData<JournalEventRow[]>(
+    "vk-recent-events",
+    companyId ? { companyId, limit: 3 } : {},
   );
 
   if (loading) {
@@ -46,6 +60,14 @@ export function VkDashboardWidget({ companyId }: { companyId?: string }) {
       })
     : "Нет постов";
 
+  const events = Array.isArray(recentEvents) ? recentEvents : [];
+  const transportLabel =
+    data.eventTransport === "long_poll"
+      ? "Long Poll"
+      : data.eventTransport === "callback"
+        ? "Callback"
+        : "Выключен";
+
   return (
     <div className="p-5 rounded-2xl bg-[#1b1b1b] border border-white/10 shadow-black/30 text-white flex flex-col gap-4">
       {/* Header */}
@@ -67,9 +89,14 @@ export function VkDashboardWidget({ companyId }: { companyId?: string }) {
             </div>
           </div>
         </div>
-        <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-          Активно
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">
+            {transportLabel}
+          </span>
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            Активно
+          </span>
+        </div>
       </div>
 
       {/* Metrics Grid */}
@@ -96,6 +123,23 @@ export function VkDashboardWidget({ companyId }: { companyId?: string }) {
           </div>
         </div>
       </div>
+
+      {/* Recent Activity Micro-Feed */}
+      {events.length > 0 && (
+        <div className="pt-2 border-t border-white/5">
+          <div className="text-[11px] uppercase font-semibold text-white/40 tracking-wider mb-2">Последние события</div>
+          <div className="space-y-1.5">
+            {events.slice(0, 3).map((evt) => (
+              <div key={evt.id} className="flex items-center justify-between text-xs py-1 px-2 rounded-lg bg-white/[0.02]">
+                <span className="text-white/80 truncate">{evt.event_type}</span>
+                <span className="text-[10px] text-white/40 font-mono">
+                  {evt.status === "invoked" ? "Агент" : "Аудит"}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Footer Link */}
       <div className="flex items-center justify-between text-[11px] text-white/40 pt-1">

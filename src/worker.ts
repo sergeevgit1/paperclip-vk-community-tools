@@ -228,7 +228,9 @@ async function startLongPollForCompany(
 }
 
 export const plugin = definePlugin({
-  async setup(ctx: PluginContext): Promise<void> {
+  multiCompanyConfig: true,
+
+  async setup(ctx: PluginContext) {
     pluginContext = ctx;
 
     // 1. Register all 23 tools declared in manifest

@@ -336,31 +336,84 @@ export const plugin = definePlugin({
         );
         const group = Array.isArray(groupsRes) ? groupsRes[0] : (groupsRes as any)?.groups?.[0];
 
-        let latestPostTime: number | null = null;
+        let recentPosts: Array<{
+          id: number;
+          date: number;
+          text: string;
+          likes: number;
+          comments: number;
+          reposts: number;
+          views: number;
+        }> = [];
         try {
           const wallRes = await client.call<any>(
             "wall.get",
-            { owner_id: -Math.abs(config.groupId), count: 2 },
+            { owner_id: -Math.abs(config.groupId), filter: "owner", count: 3 },
             "user",
           );
-          const items = wallRes?.items ?? [];
-          if (items.length > 0) {
-            latestPostTime = items[0].date;
-          }
+          recentPosts = (wallRes?.items ?? []).slice(0, 3).map((post: any) => ({
+            id: Number(post.id),
+            date: Number(post.date),
+            text: typeof post.text === "string" ? post.text : "",
+            likes: Number(post.likes?.count ?? 0),
+            comments: Number(post.comments?.count ?? 0),
+            reposts: Number(post.reposts?.count ?? 0),
+            views: Number(post.views?.count ?? 0),
+          }));
         } catch {
-          // Soft fail for wall
+          // Wall analytics is optional when the token lacks access.
         }
 
-        let unansweredCount = 0;
+        let postponedPostsCount: number | null = null;
+        let nextPostTime: number | null = null;
+        let lastScheduledPostTime: number | null = null;
         try {
-          const convsRes = await client.call<any>(
+          const postponed = await client.call<any>(
+            "wall.get",
+            { owner_id: -Math.abs(config.groupId), filter: "postponed", count: 100 },
+            "user",
+          );
+          const dates = (postponed?.items ?? [])
+            .map((post: any) => Number(post.date))
+            .filter((date: number) => Number.isFinite(date))
+            .sort((a: number, b: number) => a - b);
+          postponedPostsCount = Number(postponed?.count ?? dates.length);
+          nextPostTime = dates[0] ?? null;
+          lastScheduledPostTime = dates.at(-1) ?? null;
+        } catch {
+          // Scheduled posts are optional when the user token lacks wall access.
+        }
+
+        let requestsLast12Hours: number | null = null;
+        let customerLastMessageCount: number | null = null;
+        try {
+          const conversations = await client.call<any>(
             "messages.getConversations",
-            { filter: "unanswered", count: 1, group_id: Math.abs(config.groupId) },
+            { filter: "all", count: 200, group_id: Math.abs(config.groupId) },
             "group",
           );
-          unansweredCount = convsRes?.count ?? 0;
+          const items = conversations?.items ?? [];
+          const twelveHoursAgo = Math.floor(Date.now() / 1000) - 12 * 60 * 60;
+          requestsLast12Hours = items.filter(
+            (item: any) => Number(item.last_message?.date ?? 0) >= twelveHoursAgo,
+          ).length;
+          customerLastMessageCount = items.filter(
+            (item: any) => Number(item.last_message?.out) === 0,
+          ).length;
         } catch {
-          // Soft fail for messages
+          // Message metrics are optional when the group token lacks messages access.
+        }
+
+        let activeDonutMembers: number | null = null;
+        try {
+          const donutMembers = await client.call<any>(
+            "groups.getMembers",
+            { group_id: Math.abs(config.groupId), filter: "donut", count: 1 },
+            "group",
+          );
+          activeDonutMembers = Number(donutMembers?.count ?? 0);
+        } catch {
+          // VK Donut is optional and may be disabled for the community.
         }
 
         const refreshedAt = new Date().toISOString();
@@ -372,8 +425,13 @@ export const plugin = definePlugin({
           screenName: group?.screen_name ?? "",
           photo: group?.photo_100 ?? group?.photo_50 ?? "",
           membersCount: group?.members_count ?? 0,
-          unansweredMessages: unansweredCount,
-          latestPostTime,
+          requestsLast12Hours,
+          customerLastMessageCount,
+          activeDonutMembers,
+          postponedPostsCount,
+          nextPostTime,
+          lastScheduledPostTime,
+          recentPosts,
           eventTransport: config.eventTransport ?? "disabled",
           refreshedAt,
           nextRefreshAt,

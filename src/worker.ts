@@ -360,8 +360,8 @@ export const plugin = definePlugin({
             reposts: Number(post.reposts?.count ?? 0),
             views: Number(post.views?.count ?? 0),
           }));
-        } catch {
-          // Wall analytics is optional when the token lacks access.
+        } catch (err: any) {
+          ctx.logger.warn(`[VK Summary] wall.get failed: ${err?.message}`);
         }
 
         let postponedPostsCount: number | null = null;
@@ -380,8 +380,8 @@ export const plugin = definePlugin({
           postponedPostsCount = Number(postponed?.count ?? dates.length);
           nextPostTime = dates[0] ?? null;
           lastScheduledPostTime = dates.at(-1) ?? null;
-        } catch {
-          // Scheduled posts are optional when the user token lacks wall access.
+        } catch (err: any) {
+          ctx.logger.warn(`[VK Summary] wall.get postponed failed: ${err?.message}`);
         }
 
         let requestsLast12Hours: number | null = null;

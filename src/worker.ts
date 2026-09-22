@@ -306,8 +306,26 @@ export const plugin = definePlugin({
     });
 
     // 3. Data bridge: vk-community-summary (for dashboard widget)
+    const summaryCacheTtlMs = 12 * 60 * 60 * 1000;
     ctx.data.register("vk-community-summary", async (params: any) => {
       const companyId = typeof params?.companyId === "string" ? params.companyId : undefined;
+      const force = params?.force === true;
+      const cacheKey = companyId
+        ? { scopeKind: "company" as const, scopeId: companyId, namespace: "vk-dashboard", stateKey: "summary" }
+        : null;
+      let cached: any = null;
+
+      if (cacheKey) {
+        try {
+          cached = await ctx.state.get(cacheKey);
+          if (!force && cached?.data && Date.parse(cached.expiresAt) > Date.now()) {
+            return { ...cached.data, cached: true };
+          }
+        } catch {
+          // Cache failure must not break the widget.
+        }
+      }
+
       try {
         const { client, config } = await resolveClient(ctx, companyId);
 
@@ -345,7 +363,9 @@ export const plugin = definePlugin({
           // Soft fail for messages
         }
 
-        return {
+        const refreshedAt = new Date().toISOString();
+        const nextRefreshAt = new Date(Date.now() + summaryCacheTtlMs).toISOString();
+        const summary = {
           ok: true,
           groupId: config.groupId,
           name: group?.name ?? `Club #${config.groupId}`,
@@ -355,9 +375,23 @@ export const plugin = definePlugin({
           unansweredMessages: unansweredCount,
           latestPostTime,
           eventTransport: config.eventTransport ?? "disabled",
-          refreshedAt: new Date().toISOString(),
+          refreshedAt,
+          nextRefreshAt,
         };
+
+        if (cacheKey) {
+          try {
+            await ctx.state.set(cacheKey, { data: summary, expiresAt: nextRefreshAt });
+          } catch {
+            // Cache failure must not turn a successful VK response into an error.
+          }
+        }
+
+        return { ...summary, cached: false };
       } catch (err: any) {
+        if (cached?.data) {
+          return { ...cached.data, cached: true, stale: true };
+        }
         return {
           ok: false,
           error: err.message ?? String(err),

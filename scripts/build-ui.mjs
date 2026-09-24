@@ -23,6 +23,7 @@ if (!existsSync(entryPoint)) {
       "react/jsx-runtime",
       "@paperclipai/plugin-sdk/ui",
     ],
+    charset: "utf8",
     logLevel: "info",
   });
 }

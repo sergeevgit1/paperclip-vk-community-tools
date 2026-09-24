@@ -306,8 +306,26 @@ export const plugin = definePlugin({
     });
 
     // 3. Data bridge: vk-community-summary (for dashboard widget)
+    const summaryCacheTtlMs = 12 * 60 * 60 * 1000;
     ctx.data.register("vk-community-summary", async (params: any) => {
       const companyId = typeof params?.companyId === "string" ? params.companyId : undefined;
+      const force = params?.force === true;
+      const cacheKey = companyId
+        ? { scopeKind: "company" as const, scopeId: companyId, namespace: "vk-dashboard", stateKey: "summary" }
+        : null;
+      let cached: any = null;
+
+      if (cacheKey) {
+        try {
+          cached = await ctx.state.get(cacheKey);
+          if (!force && cached?.data && Date.parse(cached.expiresAt) > Date.now()) {
+            return { ...cached.data, cached: true };
+          }
+        } catch {
+          // Cache failure must not break the widget.
+        }
+      }
+
       try {
         const { client, config } = await resolveClient(ctx, companyId);
 
@@ -318,46 +336,120 @@ export const plugin = definePlugin({
         );
         const group = Array.isArray(groupsRes) ? groupsRes[0] : (groupsRes as any)?.groups?.[0];
 
-        let latestPostTime: number | null = null;
+        let recentPosts: Array<{
+          id: number;
+          date: number;
+          text: string;
+          likes: number;
+          comments: number;
+          reposts: number;
+          views: number;
+        }> = [];
         try {
           const wallRes = await client.call<any>(
             "wall.get",
-            { owner_id: -Math.abs(config.groupId), count: 2 },
+            { owner_id: -Math.abs(config.groupId), filter: "owner", count: 3 },
             "user",
           );
-          const items = wallRes?.items ?? [];
-          if (items.length > 0) {
-            latestPostTime = items[0].date;
-          }
-        } catch {
-          // Soft fail for wall
+          recentPosts = (wallRes?.items ?? []).slice(0, 3).map((post: any) => ({
+            id: Number(post.id),
+            date: Number(post.date),
+            text: typeof post.text === "string" ? post.text : "",
+            likes: Number(post.likes?.count ?? 0),
+            comments: Number(post.comments?.count ?? 0),
+            reposts: Number(post.reposts?.count ?? 0),
+            views: Number(post.views?.count ?? 0),
+          }));
+        } catch (err: any) {
+          ctx.logger.warn(`[VK Summary] wall.get failed: ${err?.message}`);
         }
 
-        let unansweredCount = 0;
+        let postponedPostsCount: number | null = null;
+        let nextPostTime: number | null = null;
+        let lastScheduledPostTime: number | null = null;
         try {
-          const convsRes = await client.call<any>(
+          const postponed = await client.call<any>(
+            "wall.get",
+            { owner_id: -Math.abs(config.groupId), filter: "postponed", count: 100 },
+            "user",
+          );
+          const dates = (postponed?.items ?? [])
+            .map((post: any) => Number(post.date))
+            .filter((date: number) => Number.isFinite(date))
+            .sort((a: number, b: number) => a - b);
+          postponedPostsCount = Number(postponed?.count ?? dates.length);
+          nextPostTime = dates[0] ?? null;
+          lastScheduledPostTime = dates.at(-1) ?? null;
+        } catch (err: any) {
+          ctx.logger.warn(`[VK Summary] wall.get postponed failed: ${err?.message}`);
+        }
+
+        let requestsLast12Hours: number | null = null;
+        let customerLastMessageCount: number | null = null;
+        try {
+          const conversations = await client.call<any>(
             "messages.getConversations",
-            { filter: "unanswered", count: 1, group_id: Math.abs(config.groupId) },
+            { filter: "all", count: 200, group_id: Math.abs(config.groupId) },
             "group",
           );
-          unansweredCount = convsRes?.count ?? 0;
+          const items = conversations?.items ?? [];
+          const twelveHoursAgo = Math.floor(Date.now() / 1000) - 12 * 60 * 60;
+          requestsLast12Hours = items.filter(
+            (item: any) => Number(item.last_message?.date ?? 0) >= twelveHoursAgo,
+          ).length;
+          customerLastMessageCount = items.filter(
+            (item: any) => Number(item.last_message?.out) === 0,
+          ).length;
         } catch {
-          // Soft fail for messages
+          // Message metrics are optional when the group token lacks messages access.
         }
 
-        return {
+        let activeDonutMembers: number | null = null;
+        try {
+          const donutMembers = await client.call<any>(
+            "groups.getMembers",
+            { group_id: Math.abs(config.groupId), filter: "donut", count: 1 },
+            "group",
+          );
+          activeDonutMembers = Number(donutMembers?.count ?? 0);
+        } catch {
+          // VK Donut is optional and may be disabled for the community.
+        }
+
+        const refreshedAt = new Date().toISOString();
+        const nextRefreshAt = new Date(Date.now() + summaryCacheTtlMs).toISOString();
+        const summary = {
           ok: true,
           groupId: config.groupId,
           name: group?.name ?? `Club #${config.groupId}`,
           screenName: group?.screen_name ?? "",
           photo: group?.photo_100 ?? group?.photo_50 ?? "",
           membersCount: group?.members_count ?? 0,
-          unansweredMessages: unansweredCount,
-          latestPostTime,
+          requestsLast12Hours,
+          customerLastMessageCount,
+          activeDonutMembers,
+          postponedPostsCount,
+          nextPostTime,
+          lastScheduledPostTime,
+          recentPosts,
           eventTransport: config.eventTransport ?? "disabled",
-          refreshedAt: new Date().toISOString(),
+          refreshedAt,
+          nextRefreshAt,
         };
+
+        if (cacheKey) {
+          try {
+            await ctx.state.set(cacheKey, { data: summary, expiresAt: nextRefreshAt });
+          } catch {
+            // Cache failure must not turn a successful VK response into an error.
+          }
+        }
+
+        return { ...summary, cached: false };
       } catch (err: any) {
+        if (cached?.data) {
+          return { ...cached.data, cached: true, stale: true };
+        }
         return {
           ok: false,
           error: err.message ?? String(err),
